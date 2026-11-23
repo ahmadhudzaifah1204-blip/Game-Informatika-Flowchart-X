@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Flowchart Runner: Arena Balap 6 Pemain & Jebakan Simbol</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Fredoka (Playful Game Heading) & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            game: ['Fredoka', 'sans-serif'],
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #0F172A;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      touch-action: manipulation;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Gaya SVG Simbol Flowchart */
+    .fc-svg {
+      width: 100%;
+      height: 100%;
+      stroke: #0F172A;
+      stroke-width: 3;
+      fill: #FFFFFF;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .fc-svg-line {
+      width: 100%;
+      height: 100%;
+      stroke: #0F172A;
+      stroke-width: 3;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Tombol 3D Arcade Style */
+    .btn-3d {
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .btn-3d:active {
+      transform: translateY(4px);
+    }
+
+    /* Animasi Pop-in */
+    @keyframes popIn {
+      0% { opacity: 0; transform: scale(0.9) translateY(10px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .animate-pop {
+      animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.5); }
+      50% { box-shadow: 0 0 0 10px rgba(250, 204, 21, 0); }
+    }
+    .gate-alert-glow {
+      animation: pulseGlow 1.5s infinite;
+    }
+
+    @keyframes attackShake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
+    }
+    .attack-shake {
+      animation: attackShake 0.35s ease-in-out infinite;
+    }
+
+    /* Custom Scrollbar untuk Panel Pemain */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.2);
+      border-radius: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.5);
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body class="w-screen h-screen relative overflow-hidden">
+
+  <!-- CANVAS UTAMA GAME (MULTI-LANE RACE TRACK) -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- ===================================================================== -->
+  <!-- HUD ATAS: MINIMAP BALAPAN REAL-TIME & KONTROL GLOBAL                  -->
+  <!-- ===================================================================== -->
+  <div id="hud-top" class="hidden fixed top-0 left-0 right-0 z-20 p-2 sm:p-3 pointer-events-none">
+    <div class="max-w-7xl mx-auto flex flex-col gap-2">
+      <!-- Baris Atas: Info Mode, Minimap Track Progress P1-P6, & Tombol Aksi -->
+      <div class="flex items-center justify-between gap-2">
+        <!-- Badge Jarak Target -->
+        <div class="bg-slate-900/90 backdrop-blur-md text-white px-3 py-1.5 rounded-2xl shadow-lg border-2 border-sky-400/50 flex items-center gap-2 shrink-0">
+          <i class="fa-solid fa-flag-checkered text-amber-400 text-sm"></i>
+          <div>
+            <div class="text-[9px] uppercase tracking-wider text-sky-300 font-bold leading-none">Finish</div>
+            <div id="hud-target-dist" class="font-game text-sm sm:text-base text-white leading-tight">1000m</div>
+          </div>
+        </div>
+
+        <!-- MINIMAP PROGRESS BALAPAN (POSISI P1 - P6 REAL-TIME) -->
+        <div class="flex-grow bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-lg border-2 border-slate-700 relative mx-1">
+          <div class="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1">
+            <span>START (0m)</span>
+            <span id="hud-leader-text" class="text-amber-400">Memimpin: -</span>
+            <span id="hud-finish-label">FINISH</span>
+          </div>
+          <!-- Jalur Minimap -->
+          <div id="minimap-track" class="w-full h-4 bg-slate-800 rounded-full relative border border-slate-600 overflow-visible">
+            <!-- Garis Finish Kotak-Kotak -->
+            <div class="absolute right-0 top-0 bottom-0 w-2 bg-amber-400 rounded-r-full"></div>
+            <!-- Marker Pemain P1-P6 di-render oleh JS -->
+          </div>
+        </div>
+
+        <!-- Tombol Mute, Kamus & Keluar -->
+        <div class="flex items-center gap-1.5 pointer-events-auto shrink-0">
+          <button onclick="toggleMute()" id="btn-mute" title="Suara On/Off"
+            class="btn-3d w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white hover:bg-slate-50 text-slate-800 shadow-lg border-b-4 border-slate-300 flex items-center justify-center text-sm sm:text-base">
+            <i class="fa-solid fa-volume-high text-sky-600"></i>
+          </button>
+          <button onclick="openDictionaryModal()" title="Buku Saku 16 Simbol & Jeda"
+            class="btn-3d px-3 h-9 sm:h-10 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold text-xs shadow-lg border-b-4 border-amber-600 flex items-center gap-1.5">
+            <i class="fa-solid fa-book-open"></i>
+            <span class="hidden md:inline">Kamus 16 Simbol</span>
+          </button>
+          <button onclick="confirmBackToLobby()" title="Kembali ke Lobby"
+            class="btn-3d w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-rose-500 hover:bg-rose-400 text-white shadow-lg border-b-4 border-rose-700 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-house"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- PANEL KOMANDO MULTI-PEMAIN BAWAH (KARTU STATUS, KUIS, & SERANGAN)     -->
+  <!-- ===================================================================== -->
+  <div id="multiplayer-deck" class="hidden fixed bottom-0 left-0 right-0 z-20 p-2 sm:p-3 pointer-events-none">
+    <div id="player-cards-grid" class="max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pointer-events-auto">
+      <!-- Kartu Interaktif Tiap Pemain (P1 - P6) di-render oleh JS -->
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL PILIH TARGET & LEMPAR PERTANYAAN SERANGAN / PASANG JEBAKAN      -->
+  <!-- ===================================================================== -->
+  <div id="attack-modal" class="hidden fixed inset-0 z-40 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+    <div class="bg-slate-900 text-white rounded-3xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border-4 border-rose-500 animate-pop">
+      <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-700">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center text-xl">
+            <i class="fa-solid fa-bomb"></i>
+          </div>
+          <div>
+            <h3 id="attack-modal-title" class="font-game text-xl sm:text-2xl text-amber-400 leading-none">
+              Lempar Pertanyaan Serangan!
+            </h3>
+            <p class="text-xs text-slate-300 mt-1">Pilih lawan target dan simbol Flowchart yang akan dilemparkan!</p>
+          </div>
+        </div>
+        <button onclick="closeAttackModal()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Langkah 1: Pilih Lawan Target -->
+      <div class="mb-4">
+        <label class="block text-xs font-extrabold uppercase tracking-wider text-rose-400 mb-2">
+          1. Pilih Target Lawan:
+        </label>
+        <div id="attack-target-list" class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <!-- Diisi JS -->
+        </div>
+      </div>
+
+      <!-- Langkah 2: Pilih Jenis Aksi (Serangan Kuis vs Pasang Jebakan) -->
+      <div class="mb-4">
+        <label class="block text-xs font-extrabold uppercase tracking-wider text-amber-400 mb-2">
+          2. Pilih Jenis Senjata / Pertanyaan Simbol:
+        </label>
+        <div id="attack-symbol-choices" class="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-56 overflow-y-auto pr-1">
+          <!-- 4 Pilihan Simbol Acak dari 16 Simbol + 1 Opsi Pasang Jebakan -->
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeAttackModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">
+          Batal
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TOAST NOTIFIKASI PERTEMPURAN / JEBAKAN (TENGAH ATAS)                  -->
+  <!-- ===================================================================== -->
+  <div id="battle-feed" class="fixed top-20 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-1.5 pointer-events-none w-full max-w-md px-3">
+    <!-- Notifikasi Serangan & Jebakan muncul singkat di sini -->
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- LAYAR LOBBY & SETUP PEMAIN (1 - 6 SISWA)                              -->
+  <!-- ===================================================================== -->
+  <div id="start-screen" class="fixed inset-0 z-30 bg-gradient-to-br from-slate-900 via-indigo-950 to-sky-900 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+    <div class="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl border-4 border-amber-400 animate-pop my-auto max-h-[95vh] overflow-y-auto">
+      <!-- Header Lobby -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 mb-5 border-b-2 border-slate-100">
+        <div>
+          <span class="inline-block px-3 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-[11px] uppercase tracking-wider mb-1">
+            <i class="fa-solid fa-users mr-1"></i> Arena Balap Kompetitif 1–6 Siswa
+          </span>
+          <h1 class="font-game text-2xl sm:text-4xl text-slate-900 leading-none">
+            Flowchart <span class="text-sky-600">Runner</span> <span class="text-rose-500">Battle</span>
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+            Balapan 16 Simbol Standar dengan Sistem Jebakan & Lempar Pertanyaan ke Lawan!
+          </p>
+        </div>
+
+        <button onclick="openDictionaryModal()"
+          class="btn-3d self-start md:self-center py-2.5 px-4 rounded-2xl bg-sky-100 hover:bg-sky-200 text-sky-900 font-bold text-xs sm:text-sm border-b-4 border-sky-300 flex items-center gap-2 shrink-0">
+          <i class="fa-solid fa-book-open text-sky-600"></i>
+          <span>Kamus 16 Simbol</span>
+        </button>
+      </div>
+
+      <!-- Pengaturan Arena: Jumlah Pemain, Tingkat Kesulitan, & Jarak Finish -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+        <!-- 1. Jumlah Pembalap (1 - 6) -->
+        <div>
+          <label class="block text-[11px] font-extrabold uppercase tracking-wider text-slate-600 mb-1.5">
+            1. Jumlah Pembalap (1–6)
+          </label>
+          <div class="grid grid-cols-6 gap-1.5" id="player-count-selector">
+            <button type="button" onclick="setPlayerCount(1)" class="pc-btn py-2 rounded-xl font-game text-sm border-2">1</button>
+            <button type="button" onclick="setPlayerCount(2)" class="pc-btn py-2 rounded-xl font-game text-sm border-2">2</button>
+            <button type="button" onclick="setPlayerCount(3)" class="pc-btn py-2 rounded-xl font-game text-sm border-2">3</button>
+            <button type="button" onclick="setPlayerCount(4)" class="pc-btn py-2 rounded-xl font-game text-sm border-2">4</button>
+            <button type="button" onclick="setPlayerCount(5)" class="pc-btn py-2 rounded-xl font-game text-sm border-2">5</button>
+            <button type="button" onclick="setPlayerCount(6)" class="pc-btn py-2 rounded-xl font-game text-sm border-2">6</button>
+          </div>
+          <p class="text-[10px] text-slate-500 mt-1">Bisa diisi Siswa atau AI Bot lawan.</p>
+        </div>
+
+        <!-- 2. Tingkat Kesulitan -->
+        <div>
+          <label class="block text-[11px] font-extrabold uppercase tracking-wider text-slate-600 mb-1.5">
+            2. Tingkat Kesulitan Soal
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" id="diff-pemula" onclick="selectDifficulty('pemula')"
+              class="py-2 px-2.5 rounded-xl border-2 border-teal-500 bg-teal-50 text-teal-900 font-bold text-xs text-center">
+              🌱 Pemula<br><span class="text-[10px] font-normal">SVG + Nama</span>
+            </button>
+            <button type="button" id="diff-tantangan" onclick="selectDifficulty('tantangan')"
+              class="py-2 px-2.5 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-xs text-center">
+              🔥 Tantangan<br><span class="text-[10px] font-normal">Hanya SVG</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. Jarak Garis Finish -->
+        <div>
+          <label class="block text-[11px] font-extrabold uppercase tracking-wider text-slate-600 mb-1.5">
+            3. Jarak Garis Finish
+          </label>
+          <div class="grid grid-cols-3 gap-1.5">
+            <button type="button" onclick="setFinishDistance(800)" id="dist-800"
+              class="dist-btn py-2 rounded-xl border-2 border-sky-500 bg-sky-50 text-sky-900 font-game text-xs">
+              800m
+            </button>
+            <button type="button" onclick="setFinishDistance(1200)" id="dist-1200"
+              class="dist-btn py-2 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-game text-xs">
+              1200m
+            </button>
+            <button type="button" onclick="setFinishDistance(2000)" id="dist-2000"
+              class="dist-btn py-2 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-game text-xs">
+              2000m
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-500 mt-1">800m ideal untuk sesi cepat kelas.</p>
+        </div>
+      </div>
+
+      <!-- Konfigurasi Slot Pemain P1 - P6 -->
+      <div class="mb-5">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+            Daftar Pembalap & Kontrol Keyboard / Layar Sentuh:
+          </label>
+          <span class="text-[11px] text-sky-700 font-semibold">Klik ikon Manusia/Bot untuk mengganti tipe pembalap</span>
+        </div>
+        <div id="lobby-players-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <!-- Diisi oleh JS -->
+        </div>
+      </div>
+
+      <!-- Info Mekanik Jebakan & Serangan -->
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-5 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-amber-950">
+        <div class="flex items-start gap-2">
+          <span class="text-base">⚡</span>
+          <div><strong>Gerbang Simbol:</strong> Jawab benar untuk <em>Turbo Boost</em> + kumpulkan <strong>Amunisi Serangan</strong>!</div>
+        </div>
+        <div class="flex items-start gap-2">
+          <span class="text-base">💣</span>
+          <div><strong>Lempar Pertanyaan:</strong> Kirim kuis dadakan ke lawan! Jika lawan salah/lambat, lawan kena <em>Stun</em>!</div>
+        </div>
+        <div class="flex items-start gap-2">
+          <span class="text-base">🕸️</span>
+          <div><strong>4 Jebakan Lintasan:</strong> Waspadai <em>Lumpur Glitch</em>, <em>Dinding Firewall</em>, <em>Ranjau Bug</em>, & <em>Portal Acak</em>!</div>
+        </div>
+      </div>
+
+      <!-- Tombol Mulai Balapan -->
+      <button onclick="startMultiplayerRace()"
+        class="btn-3d w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-300 hover:to-rose-400 text-white font-game text-xl sm:text-2xl shadow-xl border-b-4 border-rose-700 flex items-center justify-center gap-3">
+        <i class="fa-solid fa-flag-checkered"></i>
+        <span>MULAI BALAPAN MULTIPLAYER!</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL KAMUS SAKU 16 SIMBOL (PAUSE / BELAJAR)                          -->
+  <!-- ===================================================================== -->
+  <div id="dictionary-modal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+    <div class="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border-4 border-sky-500 overflow-hidden animate-pop">
+      <div class="bg-sky-600 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <i class="fa-solid fa-book-bookmark text-2xl text-amber-300"></i>
+          <div>
+            <h2 class="font-game text-xl sm:text-2xl leading-none">Buku Saku 16 Simbol Flowchart</h2>
+            <p class="text-xs text-sky-100 mt-0.5">Balapan dijeda sementara. Pelajari bentuk & fungsinya!</p>
+          </div>
+        </div>
+        <button onclick="closeDictionaryModal()"
+          class="btn-3d px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold text-xs sm:text-sm border-b-4 border-amber-600">
+          <i class="fa-solid fa-xmark mr-1"></i>Tutup
+        </button>
+      </div>
+
+      <div id="dictionary-grid" class="p-4 sm:p-6 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 bg-slate-50">
+        <!-- Diisi JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- LAYAR PODIUM JUARA & STATISTIK AKHIR BALAPAN                          -->
+  <!-- ===================================================================== -->
+  <div id="gameover-screen" class="hidden fixed inset-0 z-40 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+    <div class="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-8 shadow-2xl border-4 border-amber-400 text-center animate-pop my-auto max-h-[95vh] overflow-y-auto">
+      <div class="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-xs uppercase tracking-wider mb-2">
+        <i class="fa-solid fa-trophy text-amber-500"></i> Hasil Akhir Balapan Flowchart
+      </div>
+      <h2 class="font-game text-3xl sm:text-4xl text-slate-900 mb-6">Podium Juara Arena!</h2>
+
+      <!-- PODIUM VISUAL JUARA 1, 2, 3 -->
+      <div id="podium-container" class="flex items-end justify-center gap-2 sm:gap-5 max-w-2xl mx-auto mb-6 pt-4">
+        <!-- Diisi oleh JS -->
+      </div>
+
+      <!-- TABEL STATISTIK LENGKAP SEMUA PEMBALAP (1 - 6) -->
+      <div class="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden mb-6 text-left">
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs sm:text-sm">
+            <thead class="bg-slate-800 text-white font-bold uppercase text-[11px]">
+              <tr>
+                <th class="py-2.5 px-3">Peringkat</th>
+                <th class="py-2.5 px-3">Pembalap</th>
+                <th class="py-2.5 px-3 text-center">Jarak</th>
+                <th class="py-2.5 px-3 text-center">Akurasi</th>
+                <th class="py-2.5 px-3 text-center">Serangan</th>
+                <th class="py-2.5 px-3 text-center">Jebakan</th>
+                <th class="py-2.5 px-3 text-right">Skor</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-table-body" class="divide-y divide-slate-200 font-medium text-slate-700">
+              <!-- Diisi JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tombol Aksi Akhir -->
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <button onclick="returnToLobby()"
+          class="btn-3d py-3.5 px-6 rounded-2xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-sm border-b-4 border-slate-400">
+          <i class="fa-solid fa-users-gear mr-2 text-sky-600"></i>Ubah Pemain / Pengaturan
+        </button>
+        <button onclick="startMultiplayerRace()"
+          class="btn-3d py-3.5 px-8 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-white font-game text-xl shadow-lg border-b-4 border-emerald-700">
+          <i class="fa-solid fa-rotate-right mr-2"></i>BALAPAN ULANG!
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- SCRIPT UTAMA: MULTI-LANE RACE ENGINE, TRAPS & ATTACK QUIZ SYSTEM      -->
+  <!-- ===================================================================== -->
+  <script>
+    // =========================================================================
+    // 1. DATABASE 16 SIMBOL STANDAR FLOWCHART (SVG PRESISI)
+    // =========================================================================
+    const FLOWCHART_SYMBOLS = [
+      {
+        id: 1,
+        name: "Flow Direction Symbol",
+        shortName: "Flow Direction",
+        clue: "Simbol garis berpanah untuk menghubungkan antara simbol satu dengan lainnya (connecting line).",
+        desc: "Menghubungkan simbol satu dengan lainnya dan menunjukkan arah alur proses.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg-line">
+                <line x1="25" y1="12" x2="25" y2="68" />
+                <polyline points="19,60 25,68 31,60" />
+                <line x1="42" y1="68" x2="42" y2="12" />
+                <polyline points="36,20 42,12 48,20" />
+                <line x1="58" y1="26" x2="105" y2="26" />
+                <polyline points="66,20 58,26 66,32" />
+                <line x1="58" y1="54" x2="105" y2="54" />
+                <polyline points="97,48 105,54 97,60" />
+              </svg>`
+      },
+      {
+        id: 2,
+        name: "Terminator Symbol",
+        shortName: "Terminator",
+        clue: "Simbol kapsul/oval untuk permulaan (start) atau akhir (stop) suatu kegiatan.",
+        desc: "Menandai permulaan (start) atau akhir (stop) dari suatu kegiatan/program.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <rect x="16" y="22" width="88" height="36" rx="18" ry="18" />
+              </svg>`
+      },
+      {
+        id: 3,
+        name: "Connector Symbol (On-Page)",
+        shortName: "Connector (Sama)",
+        clue: "Simbol lingkaran untuk penyambungan proses dalam lembar / halaman yang SAMA.",
+        desc: "Simbol lingkaran untuk keluar-masuk proses dalam lembar/halaman yang sama.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <circle cx="60" cy="40" r="24" />
+              </svg>`
+      },
+      {
+        id: 4,
+        name: "Connector Symbol (Off-Page)",
+        shortName: "Connector (Beda)",
+        clue: "Simbol segilima (panah ke bawah) untuk penyambungan proses pada halaman yang BERBEDA.",
+        desc: "Simbol segilima untuk keluar-masuk proses pada lembar/halaman yang berbeda.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <polygon points="38,14 82,14 82,46 60,68 38,46" />
+              </svg>`
+      },
+      {
+        id: 5,
+        name: "Processing Symbol",
+        shortName: "Processing",
+        clue: "Simbol persegi panjang yang menunjukkan pengolahan yang dilakukan oleh komputer.",
+        desc: "Menunjukkan pengolahan data yang dilakukan secara otomatis oleh komputer.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <rect x="20" y="20" width="80" height="40" rx="2" />
+              </svg>`
+      },
+      {
+        id: 6,
+        name: "Simbol Manual Operation",
+        shortName: "Manual Operation",
+        clue: "Simbol trapesium terbalik untuk pengolahan yang TIDAK dilakukan oleh komputer.",
+        desc: "Menunjukkan pengolahan yang tidak dilakukan oleh komputer (manual oleh manusia).",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <polygon points="18,20 102,20 86,60 34,60" />
+              </svg>`
+      },
+      {
+        id: 7,
+        name: "Simbol Decision",
+        shortName: "Decision",
+        clue: "Simbol belah ketupat untuk pemilihan proses berdasarkan kondisi yang ada (Ya/Tidak).",
+        desc: "Pemilihan proses atau percabangan alur berdasarkan kondisi tertentu.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <polygon points="60,12 100,40 60,68 20,40" />
+              </svg>`
+      },
+      {
+        id: 8,
+        name: "Simbol Input-Output",
+        shortName: "Input-Output",
+        clue: "Simbol jajaran genjang untuk proses input & output tanpa tergantung jenis peralatannya.",
+        desc: "Menyatakan proses input dan output secara umum tanpa bergantung jenis alat.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <polygon points="32,20 102,20 88,60 18,60" />
+              </svg>`
+      },
+      {
+        id: 9,
+        name: "Simbol Manual Input",
+        shortName: "Manual Input",
+        clue: "Simbol untuk pemasukan data secara manual melalui on-line keyboard.",
+        desc: "Segiempat dengan sisi atas miring untuk pemasukan data manual via keyboard.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <polygon points="22,32 98,18 98,62 22,62" />
+              </svg>`
+      },
+      {
+        id: 10,
+        name: "Simbol Preparation",
+        shortName: "Preparation",
+        clue: "Simbol segi enam (hexagon) untuk mempersiapkan penyimpanan di dalam storage.",
+        desc: "Mempersiapkan ruang penyimpanan atau inisialisasi variabel di dalam storage.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <polygon points="34,18 86,18 104,40 86,62 34,62 16,40" />
+              </svg>`
+      },
+      {
+        id: 11,
+        name: "Simbol Predefine Proses",
+        shortName: "Predefine Proses",
+        clue: "Simbol persegi panjang bergaris ganda untuk pelaksanaan suatu sub-program/prosedur.",
+        desc: "Pelaksanaan suatu bagian (sub-program), fungsi, atau prosedur terpisah.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <rect x="20" y="20" width="80" height="40" />
+                <line x1="30" y1="20" x2="30" y2="60" />
+                <line x1="90" y1="20" x2="90" y2="60" />
+              </svg>`
+      },
+      {
+        id: 12,
+        name: "Simbol Display",
+        shortName: "Display",
+        clue: "Simbol peralatan output visual seperti layar monitor, plotter, atau printer.",
+        desc: "Menyatakan peralatan output yang digunakan yaitu layar, plotter, printer, dll.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <path d="M 38,20 L 82,20 Q 102,40 82,60 L 38,60 Q 18,40 38,20 Z" />
+              </svg>`
+      },
+      {
+        id: 13,
+        name: "Simbol Disk and On-line Storage",
+        shortName: "Disk & Storage",
+        clue: "Simbol silinder mendatar untuk input dari disk atau output disimpan ke disk.",
+        desc: "Menyatakan input yang berasal dari disk atau output yang disimpan ke disk.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <path d="M 28,20 L 94,20 Q 82,40 94,60 L 28,60 Q 18,40 28,20 Z" />
+              </svg>`
+      },
+      {
+        id: 14,
+        name: "Simbol Magnetik Tape Unit",
+        shortName: "Magnetik Tape",
+        clue: "Simbol lingkaran dengan garis mendatar bawah untuk input/output pita magnetik.",
+        desc: "Menyatakan input berasal dari pita magnetik atau output disimpan ke pita magnetik.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <circle cx="56" cy="38" r="22" />
+                <line x1="56" y1="60" x2="94" y2="60" />
+              </svg>`
+      },
+      {
+        id: 15,
+        name: "Simbol Punch Card",
+        shortName: "Punch Card",
+        clue: "Simbol bersudut kiri atas terpotong untuk input dari kartu atau output ditulis ke kartu.",
+        desc: "Menyatakan bahwa input berasal dari kartu atau output ditulis ke kartu.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <polygon points="36,18 96,18 96,62 24,62 24,30" />
+              </svg>`
+      },
+      {
+        id: 16,
+        name: "Simbol Dokumen",
+        shortName: "Dokumen",
+        clue: "Simbol berbawah bergelombang untuk input dokumen kertas atau output dicetak ke kertas.",
+        desc: "Menyatakan input berasal dari dokumen kertas atau output dicetak ke kertas.",
+        svg: `<svg viewBox="0 0 120 80" class="fc-svg">
+                <path d="M 24,18 L 96,18 L 96,56 Q 78,46 60,56 T 24,56 Z" />
+              </svg>`
+      }
+    ];
+
+    // =========================================================================
+    // 2. KONFIGURASI WARNA AVATAR & KONTROL KEYBOARD (P1 - P6)
+    // =========================================================================
+    const PLAYER_PRESETS = [
+      { id: 0, label: "P1", defaultName: "Siswa 1", colorName: "Biru Cyan", hex: "#0284C7", lightBg: "bg-sky-50", border: "border-sky-500", badge: "bg-sky-600", keys: ["1", "2", "3"], isBot: false },
+      { id: 1, label: "P2", defaultName: "Siswa 2", colorName: "Merah Crimson", hex: "#E11D48", lightBg: "bg-rose-50", border: "border-rose-500", badge: "bg-rose-600", keys: ["Q", "W", "E"], isBot: false },
+      { id: 2, label: "P3", defaultName: "Bot Zamrud", colorName: "Hijau Zamrud", hex: "#059669", lightBg: "bg-emerald-50", border: "border-emerald-500", badge: "bg-emerald-600", keys: ["A", "S", "D"], isBot: true },
+      { id: 3, label: "P4", defaultName: "Bot Emas", colorName: "Kuning Emas", hex: "#D97706", lightBg: "bg-amber-50", border: "border-amber-500", badge: "bg-amber-600", keys: ["Z", "X", "C"], isBot: true },
+      { id: 4, label: "P5", defaultName: "Bot Ungu", colorName: "Ungu Neon", hex: "#7C3AED", lightBg: "bg-purple-50", border: "border-purple-500", badge: "bg-purple-600", keys: ["U", "I", "O"], isBot: true },
+      { id: 5, label: "P6", defaultName: "Bot Oranye", colorName: "Oranye Api", hex: "#EA580C", lightBg: "bg-orange-50", border: "border-orange-500", badge: "bg-orange-600", keys: ["J", "K", "L"], isBot: true }
+    ];
+
+    // 4 Jenis Jebakan di Lintasan
+    const TRAP_TYPES = [
+      {
+        type: "SLOW_SLIME",
+        name: "Lumpur Glitch",
+        icon: "🟣",
+        color: "#A855F7",
+        desc: "Kecepatan melambat drastis selama 3.5 detik!"
+      },
+      {
+        type: "FIREWALL_LOCK",
+        name: "Dinding Firewall",
+        icon: "🧱",
+        color: "#EF4444",
+        desc: "Terkunci! Jawab simbol pembuka atau tertahan 3.5 detik!"
+      },
+      {
+        type: "BUG_SPIKE",
+        name: "Ranjau Virus Bug",
+        icon: "👾",
+        color: "#F43F5E",
+        desc: "Tersandung & kehilangan Turbo Boost!"
+      },
+      {
+        type: "CONFUSION_PORTAL",
+        name: "Portal Acak",
+        icon: "🌀",
+        color: "#06B6D4",
+        desc: "Urutan pilihan jawaban teracak sementara!"
+      }
+    ];
+
+    // =========================================================================
+    // 3. WEB AUDIO API (RETRO-FUTURISTIC SOUND EFFECTS)
+    // =========================================================================
+    const SoundFX = {
+      ctx: null,
+      muted: false,
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      },
+      playTone(freq, type, duration, vol = 0.12, slideTo = null) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, this.ctx.currentTime + duration);
+
+        gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + duration);
+      },
+      turbo() {
+        this.playTone(440, 'triangle', 0.1, 0.14);
+        setTimeout(() => this.playTone(659.25, 'triangle', 0.12, 0.14), 70);
+        setTimeout(() => this.playTone(880, 'triangle', 0.22, 0.16), 140);
+      },
+      trapHit() {
+        this.playTone(190, 'sawtooth', 0.3, 0.15, 65);
+      },
+      throwAttack() {
+        this.playTone(720, 'square', 0.15, 0.12, 260);
+      },
+      orbPickup() {
+        this.playTone(880, 'sine', 0.08, 0.12);
+        setTimeout(() => this.playTone(1174.66, 'sine', 0.16, 0.14), 60);
+      },
+      finishFanfare() {
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((n, i) => {
+          setTimeout(() => this.playTone(n, 'triangle', 0.22, 0.16), i * 110);
+        });
+      }
+    };
+
+    function toggleMute() {
+      SoundFX.muted = !SoundFX.muted;
+      const btn = document.getElementById('btn-mute');
+      btn.innerHTML = SoundFX.muted
+        ? '<i class="fa-solid fa-volume-xmark text-rose-500"></i>'
+        : '<i class="fa-solid fa-volume-high text-sky-600"></i>';
+    }
+
+    // =========================================================================
+    // 4. STATE LOBBY & KONFIGURASI MULTIPLAYER (1 - 6 PEMBALAP)
+    // =========================================================================
+    let selectedPlayerCount = 3; // Default 3 pembalap agar langsung terasa serunya
+    let difficulty = 'pemula'; // 'pemula' | 'tantangan'
+    let finishDistance = 800; // Default 800m
+    let lobbyConfigs = JSON.parse(JSON.stringify(PLAYER_PRESETS));
+
+    let gameState = 'LOBBY'; // 'LOBBY' | 'RACING' | 'PAUSED_DICT' | 'FINISHED'
+    let racers = [];
+    let trackEntities = []; // Jebakan & Kotak Item di lintasan tiap jalur
+    let projectiles = []; // Animasi bola pertanyaan yang dilempar antar jalur!
+    let particles = [];
+    let raceElapsedTime = 0;
+    let finishedCount = 0;
+    let activeAttackerIndex = null;
+    let selectedTargetIndex = null;
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Render Pengaturan Lobby
+    function setPlayerCount(count) {
+      selectedPlayerCount = count;
+      document.querySelectorAll('.pc-btn').forEach((btn, idx) => {
+        if (idx + 1 === count) {
+          btn.className = "pc-btn py-2 rounded-xl font-game text-sm border-2 border-amber-500 bg-amber-400 text-slate-900 shadow-sm";
+        } else {
+          btn.className = "pc-btn py-2 rounded-xl font-game text-sm border-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-100";
+        }
+      });
+      renderLobbyPlayers();
+    }
+
+    function selectDifficulty(mode) {
+      difficulty = mode;
+      const btnP = document.getElementById('diff-pemula');
+      const btnT = document.getElementById('diff-tantangan');
+      if (mode === 'pemula') {
+        btnP.className = "py-2 px-2.5 rounded-xl border-2 border-teal-500 bg-teal-50 text-teal-900 font-bold text-xs text-center shadow-sm";
+        btnT.className = "py-2 px-2.5 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-xs text-center";
+      } else {
+        btnT.className = "py-2 px-2.5 rounded-xl border-2 border-amber-500 bg-amber-50 text-amber-900 font-bold text-xs text-center shadow-sm";
+        btnP.className = "py-2 px-2.5 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-xs text-center";
+      }
+    }
+
+    function setFinishDistance(dist) {
+      finishDistance = dist;
+      document.querySelectorAll('.dist-btn').forEach(btn => {
+        btn.className = "dist-btn py-2 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-game text-xs";
+      });
+      const activeBtn = document.getElementById(`dist-${dist}`);
+      if (activeBtn) {
+        activeBtn.className = "dist-btn py-2 rounded-xl border-2 border-sky-500 bg-sky-50 text-sky-900 font-game text-xs shadow-sm";
+      }
+    }
+
+    function togglePlayerBot(index) {
+      lobbyConfigs[index].isBot = !lobbyConfigs[index].isBot;
+      if (lobbyConfigs[index].isBot && lobbyConfigs[index].defaultName.startsWith("Siswa")) {
+        lobbyConfigs[index].defaultName = `Bot ${lobbyConfigs[index].colorName.split(' ')[0]}`;
+      } else if (!lobbyConfigs[index].isBot && lobbyConfigs[index].defaultName.startsWith("Bot")) {
+        lobbyConfigs[index].defaultName = `Siswa ${index + 1}`;
+      }
+      renderLobbyPlayers();
+    }
+
+    function updateLobbyPlayerName(index, val) {
+      lobbyConfigs[index].defaultName = val;
+    }
+
+    function renderLobbyPlayers() {
+      const grid = document.getElementById('lobby-players-grid');
+      const activeConfigs = lobbyConfigs.slice(0, selectedPlayerCount);
+
+      grid.innerHTML = activeConfigs.map((cfg, idx) => `
+        <div class="p-3 rounded-2xl border-2 ${cfg.border} ${cfg.lightBg} flex flex-col gap-2 shadow-sm">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded-lg ${cfg.badge} text-white font-game text-xs">${cfg.label}</span>
+              <span class="text-xs font-bold text-slate-700">${cfg.colorName}</span>
+            </div>
+            <button type="button" onclick="togglePlayerBot(${idx})"
+              class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition ${cfg.isBot ? 'bg-slate-800 text-amber-300' : 'bg-white text-sky-700 border border-sky-300'}">
+              ${cfg.isBot ? '<i class="fa-solid fa-robot mr-1"></i>AI Bot' : '<i class="fa-solid fa-user mr-1"></i>Siswa'}
+            </button>
+          </div>
+
+          <input type="text" value="${cfg.defaultName}" oninput="updateLobbyPlayerName(${idx}, this.value)"
+            placeholder="Nama Pembalap ${idx + 1}" maxlength="16"
+            class="w-full px-3 py-1.5 rounded-xl border border-slate-300 bg-white font-bold text-xs sm:text-sm text-slate-800 focus:outline-none focus:border-sky-500" />
+
+          <div class="flex items-center justify-between text-[10px] text-slate-600 font-semibold">
+            <span>Tombol Keyboard:</span>
+            <span class="font-mono bg-white px-2 py-0.5 rounded border border-slate-200 font-bold text-slate-800">
+              [${cfg.keys.join('] [')}]
+            </span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // =========================================================================
+    // 5. KAMUS 16 SIMBOL & NOTIFIKASI PERTEMPURAN
+    // =========================================================================
+    function populateDictionary() {
+      const grid = document.getElementById('dictionary-grid');
+      grid.innerHTML = FLOWCHART_SYMBOLS.map(s => `
+        <div class="bg-white rounded-2xl p-3.5 border-2 border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 font-bold text-xs">#${s.id}</span>
+            </div>
+            <div class="w-full h-20 bg-slate-50 rounded-xl p-2 flex items-center justify-center mb-2 border border-slate-100">
+              <div class="w-24 h-16">${s.svg}</div>
+            </div>
+            <h4 class="font-bold text-sm text-slate-900 leading-tight mb-1">${s.name}</h4>
+            <p class="text-xs text-slate-600 leading-relaxed">${s.desc}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openDictionaryModal() {
+      populateDictionary();
+      if (gameState === 'RACING') gameState = 'PAUSED_DICT';
+      document.getElementById('dictionary-modal').classList.remove('hidden');
+    }
+
+    function closeDictionaryModal() {
+      document.getElementById('dictionary-modal').classList.add('hidden');
+      if (gameState === 'PAUSED_DICT') {
+        gameState = 'RACING';
+        lastTimestamp = performance.now();
+      }
+    }
+
+    function pushBattleToast(htmlText, bgClass = "bg-slate-900/95 border-amber-400 text-white") {
+      const feed = document.getElementById('battle-feed');
+      const el = document.createElement('div');
+      el.className = `${bgClass} border-2 px-4 py-2 rounded-2xl shadow-xl text-xs font-bold text-center animate-pop`;
+      el.innerHTML = htmlText;
+      feed.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transition = 'opacity 0.3s';
+        setTimeout(() => el.remove(), 300);
+      }, 2600);
+    }
+
+    function confirmBackToLobby() {
+      gameState = 'LOBBY';
+      document.getElementById('hud-top').classList.add('hidden');
+      document.getElementById('multiplayer-deck').classList.add('hidden');
+      document.getElementById('attack-modal').classList.add('hidden');
+      document.getElementById('start-screen').classList.remove('hidden');
+    }
+
+    function returnToLobby() {
+      document.getElementById('gameover-screen').classList.add('hidden');
+      confirmBackToLobby();
+    }
+
+    // =========================================================================
+    // 6. INISIALISASI BALAPAN MULTIPLAYER (1 - 6 JALUR)
+    // =========================================================================
+    function createChallengeQuestion(forcedSymbol = null) {
+      const target = forcedSymbol || FLOWCHART_SYMBOLS[Math.floor(Math.random() * FLOWCHART_SYMBOLS.length)];
+      const distractors = FLOWCHART_SYMBOLS
+        .filter(s => s.id !== target.id)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 2);
+      const options = [target, ...distractors].sort(() => Math.random() - 0.5);
+      return {
+        target,
+        options,
+        timeLeft: 10.0,
+        maxTime: 10.0
+      };
+    }
+
+    function startMultiplayerRace() {
+      SoundFX.init();
+      racers = [];
+      trackEntities = [];
+      projectiles = [];
+      particles = [];
+      raceElapsedTime = 0;
+      finishedCount = 0;
+      activeAttackerIndex = null;
+
+      for (let i = 0; i < selectedPlayerCount; i++) {
+        const cfg = lobbyConfigs[i];
+        const name = (cfg.defaultName || cfg.label).trim();
+
+        racers.push({
+          index: i,
+          label: cfg.label,
+          name: name,
+          color: cfg.hex,
+          lightBg: cfg.lightBg,
+          border: cfg.border,
+          badge: cfg.badge,
+          keys: cfg.keys,
+          isBot: cfg.isBot,
+
+          // Progres Balapan
+          distance: 0,
+          score: 0,
+          finished: false,
+          finishRank: null,
+          finishTime: 0,
+
+          // Statistik
+          questionsAnswered: 0,
+          questionsCorrect: 0,
+          attacksSent: 0,
+          trapsHit: 0,
+
+          // Status Efek & Powerup
+          ammo: 1, // Tiap pemain mulai dengan 1 Amunisi Serangan agar bisa langsung mencoba!
+          turboTimer: 0,
+          slowTimer: 0,
+          stunTimer: 0,
+          confusionTimer: 0,
+          shieldTimer: 0,
+          runCycle: Math.random() * 5,
+
+          // Kuis Aktif (Normal Gate / Firewall Trap / Incoming Attack)
+          activeQuiz: null,
+          quizMode: 'GATE', // 'GATE' | 'ATTACK_INCOMING' | 'FIREWALL_TRAP'
+          attackerName: null,
+          nextQuizDist: 75 + (i * 12),
+          botThinkTimer: 1.4 + Math.random() * 1.2
+        });
+
+        // Sebar Jebakan & Kotak Item di setiap jalur
+        spawnInitialEntitiesForLane(i);
+      }
+
+      document.getElementById('hud-target-dist').textContent = `${finishDistance}m`;
+      document.getElementById('hud-finish-label').textContent = `FINISH (${finishDistance}m)`;
+
+      document.getElementById('start-screen').classList.add('hidden');
+      document.getElementById('gameover-screen').classList.add('hidden');
+      document.getElementById('attack-modal').classList.add('hidden');
+
+      document.getElementById('hud-top').classList.remove('hidden');
+      document.getElementById('multiplayer-deck').classList.remove('hidden');
+
+      renderMinimap();
+      renderPlayerDeck();
+
+      gameState = 'RACING';
+      lastTimestamp = performance.now();
+      pushBattleToast("🏁 BALAPAN DIMULAI! Jawab Gerbang Simbol & Lempar Pertanyaan ke Lawan!", "bg-sky-900/95 border-amber-400 text-white");
+    }
+
+    function spawnInitialEntitiesForLane(laneIndex) {
+      // Spawn jebakan dan orb setiap ~110m di jalur tersebut
+      for (let d = 110; d < finishDistance - 60; d += 105 + Math.random() * 45) {
+        const isOrb = Math.random() < 0.38;
+        if (isOrb) {
+          trackEntities.push({
+            lane: laneIndex,
+            dist: d,
+            kind: 'ORB', // Kotak Amunisi Serangan / Perisai
+            triggered: false
+          });
+        } else {
+          const trap = TRAP_TYPES[Math.floor(Math.random() * TRAP_TYPES.length)];
+          trackEntities.push({
+            lane: laneIndex,
+            dist: d,
+            kind: 'TRAP',
+            trapData: trap,
+            triggered: false
+          });
+        }
+      }
+    }
+
+    // =========================================================================
+    // 7. INTERAKSI JAWAB KUIS & MELEMPAR PERTANYAAN KE LAWAN
+    // =========================================================================
+    function handleRacerAnswer(racerIdx, optionIdx) {
+      if (gameState !== 'RACING') return;
+      const r = racers[racerIdx];
+      if (!r || r.finished || !r.activeQuiz) return;
+
+      const quiz = r.activeQuiz;
+      const chosen = quiz.options[optionIdx];
+      const isCorrect = chosen.id === quiz.target.id;
+
+      r.questionsAnswered++;
+
+      if (isCorrect) {
+        r.questionsCorrect++;
+        r.turboTimer = 2.6;
+        r.slowTimer = 0;
+        r.stunTimer = 0;
+        r.score += 120;
+
+        if (r.quizMode === 'ATTACK_INCOMING') {
+          r.shieldTimer = 2.0;
+          if (!r.isBot) SoundFX.turbo();
+          pushBattleToast(`🛡️ <strong>${r.name}</strong> berhasil menangkis pertanyaan serangan dari <strong>${r.attackerName}</strong>! (+Turbo)`, "bg-teal-900/95 border-teal-400 text-white");
+        } else if (r.quizMode === 'FIREWALL_TRAP') {
+          if (!r.isBot) SoundFX.turbo();
+          pushBattleToast(`🔓 <strong>${r.name}</strong> membobol Dinding Firewall dengan cepat!`, "bg-sky-900/95 border-sky-400 text-white");
+        } else {
+          // Gerbang Normal: Dapat +1 Amunisi Pertanyaan Serangan!
+          r.ammo = Math.min(3, r.ammo + 1);
+          if (!r.isBot) SoundFX.turbo();
+          spawnLaneConfetti(r.index, 18);
+        }
+      } else {
+        // Salah Menjawab
+        r.stunTimer = 2.4;
+        r.turboTimer = 0;
+        if (!r.isBot) SoundFX.trapHit();
+
+        if (r.quizMode === 'ATTACK_INCOMING') {
+          pushBattleToast(`💥 <strong>${r.name}</strong> terkena serangan <strong>${r.attackerName}</strong>! (Jawaban: ${quiz.target.shortName})`, "bg-rose-900/95 border-rose-400 text-white");
+        } else {
+          pushBattleToast(`❌ <strong>${r.name}</strong> salah pilih! Seharusnya <strong>${quiz.target.shortName}</strong>.`, "bg-rose-900/95 border-rose-400 text-white");
+        }
+      }
+
+      r.activeQuiz = null;
+      r.quizMode = 'GATE';
+      r.attackerName = null;
+      r.nextQuizDist = r.distance + 85 + Math.random() * 25;
+      renderPlayerDeck();
+    }
+
+    // Membuka Modal Lempar Pertanyaan Serangan (Untuk Siswa)
+    function openAttackModal(attackerIdx) {
+      if (gameState !== 'RACING') return;
+      const attacker = racers[attackerIdx];
+      if (!attacker || attacker.ammo <= 0 || attacker.finished) return;
+
+      if (racers.length <= 1) {
+        // Jika main solo 1 pemain, gunakan amunisi sebagai Super Nitro Boost!
+        attacker.ammo--;
+        attacker.turboTimer = 3.2;
+        attacker.score += 100;
+        SoundFX.turbo();
+        pushBattleToast(`🚀 <strong>${attacker.name}</strong> mengaktifkan Super Nitro Boost!`, "bg-amber-900/95 border-amber-400 text-white");
+        renderPlayerDeck();
+        return;
+      }
+
+      activeAttackerIndex = attackerIdx;
+
+      // Pilih target default: pembalap terdepan selain penyerang
+      const opponents = racers.filter(r => r.index !== attackerIdx && !r.finished);
+      if (opponents.length === 0) return;
+      opponents.sort((a, b) => b.distance - a.distance);
+      selectedTargetIndex = opponents[0].index;
+
+      document.getElementById('attack-modal-title').textContent = `${attacker.name}: Lempar Pertanyaan Serangan!`;
+      renderAttackModalContent();
+      document.getElementById('attack-modal').classList.remove('hidden');
+    }
+
+    function selectAttackTarget(targetIdx) {
+      selectedTargetIndex = targetIdx;
+      renderAttackModalContent();
+    }
+
+    function renderAttackModalContent() {
+      const opponents = racers.filter(r => r.index !== activeAttackerIndex && !r.finished);
+      const targetListEl = document.getElementById('attack-target-list');
+
+      targetListEl.innerHTML = opponents.map(opp => {
+        const isSelected = opp.index === selectedTargetIndex;
+        return `
+          <button type="button" onclick="selectAttackTarget(${opp.index})"
+            class="p-2.5 rounded-2xl border-2 text-left transition flex items-center justify-between ${isSelected ? 'border-amber-400 bg-rose-950 ring-2 ring-amber-400' : 'border-slate-700 bg-slate-800 hover:border-slate-500'}">
+            <div>
+              <div class="font-bold text-xs text-white flex items-center gap-1.5">
+                <span class="px-1.5 py-0.5 rounded ${opp.badge} text-[10px]">${opp.label}</span>
+                <span>${opp.name}</span>
+              </div>
+              <div class="text-[10px] text-slate-400 mt-0.5">Jarak: ${Math.floor(opp.distance)}m</div>
+            </div>
+            ${isSelected ? '<i class="fa-solid fa-crosshairs text-amber-400 text-base"></i>' : ''}
+          </button>
+        `;
+      }).join('');
+
+      // 4 Simbol Acak untuk dilemparkan sebagai pertanyaan serangan + 1 Opsi Pasang Jebakan
+      const random4 = [...FLOWCHART_SYMBOLS].sort(() => Math.random() - 0.5).slice(0, 4);
+      const choicesEl = document.getElementById('attack-symbol-choices');
+
+      choicesEl.innerHTML = random4.map(sym => `
+        <button type="button" onclick="launchQuestionAttack(${sym.id})"
+          class="btn-3d bg-white hover:bg-amber-50 text-slate-900 rounded-2xl p-2.5 border-b-4 border-slate-300 hover:border-amber-500 flex flex-col items-center text-center transition">
+          <div class="w-16 h-12 mb-1">${sym.svg}</div>
+          <div class="font-bold text-[11px] leading-tight line-clamp-2">${sym.shortName}</div>
+          <span class="mt-1 px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-extrabold text-[9px]">Lempar Kuis</span>
+        </button>
+      `).join('');
+    }
+
+    function closeAttackModal() {
+      document.getElementById('attack-modal').classList.add('hidden');
+      activeAttackerIndex = null;
+    }
+
+    function launchQuestionAttack(symbolId) {
+      if (activeAttackerIndex === null || selectedTargetIndex === null) return;
+      const attacker = racers[activeAttackerIndex];
+      const target = racers[selectedTargetIndex];
+      const sym = FLOWCHART_SYMBOLS.find(s => s.id === symbolId);
+
+      closeAttackModal();
+      executeAttack(attacker, target, sym);
+    }
+
+    function executeAttack(attacker, target, symbolObj) {
+      if (!attacker || !target || attacker.ammo <= 0 || target.finished) return;
+
+      attacker.ammo--;
+      attacker.attacksSent++;
+      attacker.score += 50;
+      SoundFX.throwAttack();
+
+      // Animasi proyektil terbang dari jalur penyerang ke jalur target di Canvas
+      projectiles.push({
+        fromLane: attacker.index,
+        toLane: target.index,
+        progress: 0,
+        color: attacker.color
+      });
+
+      // Timpa kuis target dengan Pertanyaan Serangan Dadakan!
+      const q = createChallengeQuestion(symbolObj);
+      q.timeLeft = 8.5;
+      q.maxTime = 8.5;
+      target.activeQuiz = q;
+      target.quizMode = 'ATTACK_INCOMING';
+      target.attackerName = attacker.name;
+      target.botThinkTimer = 1.6 + Math.random() * 1.4;
+
+      pushBattleToast(
+        `💣 <strong>${attacker.name}</strong> melempar pertanyaan <strong>"${symbolObj.shortName}"</strong> ke <strong>${target.name}</strong>!`,
+        "bg-rose-950/95 border-amber-400 text-white"
+      );
+
+      renderPlayerDeck();
+    }
+
+    // =========================================================================
+    // 8. UPDATE SIMULASI BALAPAN, JEBAKAN & AI BOT
+    // =========================================================================
+    function updateRace(dt) {
+      if (gameState !== 'RACING') return;
+      raceElapsedTime += dt;
+
+      // Update Proyektil Serangan
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        projectiles[i].progress += dt * 2.4;
+        if (projectiles[i].progress >= 1) projectiles.splice(i, 1);
+      }
+
+      // Update Partikel
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+
+      let deckNeedsRefresh = false;
+
+      racers.forEach(r => {
+        if (r.finished) return;
+
+        // Kurangi timer efek status
+        if (r.turboTimer > 0) r.turboTimer = Math.max(0, r.turboTimer - dt);
+        if (r.slowTimer > 0) r.slowTimer = Math.max(0, r.slowTimer - dt);
+        if (r.stunTimer > 0) r.stunTimer = Math.max(0, r.stunTimer - dt);
+        if (r.confusionTimer > 0) r.confusionTimer = Math.max(0, r.confusionTimer - dt);
+        if (r.shieldTimer > 0) r.shieldTimer = Math.max(0, r.shieldTimer - dt);
+
+        // Hitung Kecepatan Lari Pembalap (meter/detik)
+        let speed = 28; // Kecepatan dasar ~28 m/s
+        if (r.stunTimer > 0) {
+          speed = 6; // Tersandung / Stun
+        } else if (r.slowTimer > 0) {
+          speed = 13; // Terkena Lumpur Glitch
+        } else if (r.turboTimer > 0) {
+          speed = 46; // Turbo Boost!
+        }
+
+        // Jika sedang menghadapi Dinding Firewall atau Serangan Kuis, sedikit melambat
+        if (r.activeQuiz) {
+          speed *= (r.quizMode === 'FIREWALL_TRAP' ? 0.35 : 0.72);
+          r.activeQuiz.timeLeft -= dt;
+
+          // Jika AI Bot, simulasikan berpikir & menjawab
+          if (r.isBot) {
+            r.botThinkTimer -= dt;
+            if (r.botThinkTimer <= 0) {
+              const botSmartness = 0.68; // 68% peluang bot benar
+              const correctIdx = r.activeQuiz.options.findIndex(o => o.id === r.activeQuiz.target.id);
+              const chosenIdx = Math.random() < botSmartness
+                ? correctIdx
+                : (correctIdx + 1) % 3;
+              handleRacerAnswer(r.index, chosenIdx);
+              deckNeedsRefresh = true;
+            }
+          } else if (r.activeQuiz.timeLeft <= 0) {
+            // Waktu habis untuk siswa
+            const wrongIdx = r.activeQuiz.options.findIndex(o => o.id !== r.activeQuiz.target.id);
+            handleRacerAnswer(r.index, wrongIdx);
+            deckNeedsRefresh = true;
+          }
+        } else {
+          // Cek apakah sudah mencapai titik Gerbang Tantangan berikutnya
+          if (r.distance >= r.nextQuizDist && r.distance < finishDistance - 35) {
+            r.activeQuiz = createChallengeQuestion();
+            r.quizMode = 'GATE';
+            r.botThinkTimer = 1.5 + Math.random() * 1.4;
+            deckNeedsRefresh = true;
+          }
+        }
+
+        // AI Bot otomatis melempar pertanyaan serangan jika punya amunisi!
+        if (r.isBot && r.ammo > 0 && racers.length > 1 && Math.random() < 0.008) {
+          const targets = racers.filter(opp => opp.index !== r.index && !opp.finished && !opp.activeQuiz);
+          if (targets.length > 0) {
+            targets.sort((a, b) => b.distance - a.distance);
+            const sym = FLOWCHART_SYMBOLS[Math.floor(Math.random() * FLOWCHART_SYMBOLS.length)];
+            executeAttack(r, targets[0], sym);
+            deckNeedsRefresh = true;
+          }
+        }
+
+        // Majukan Jarak & Animasi Kaki
+        r.distance += speed * dt;
+        r.runCycle += dt * (speed * 0.45);
+
+        // Cek Tabrakan dengan Jebakan & Kotak Item di Jalurnya
+        trackEntities.forEach(ent => {
+          if (ent.lane === r.index && !ent.triggered && Math.abs(ent.dist - r.distance) < 4.5) {
+            ent.triggered = true;
+
+            if (ent.kind === 'ORB') {
+              // Ambil Kotak Item!
+              if (Math.random() < 0.7) {
+                r.ammo = Math.min(3, r.ammo + 1);
+                if (!r.isBot) {
+                  SoundFX.orbPickup();
+                  pushBattleToast(`⚡ <strong>${r.name}</strong> mendapat +1 Amunisi Pertanyaan Serangan!`, "bg-amber-900/95 border-amber-400 text-white");
+                }
+              } else {
+                r.shieldTimer = 4.0;
+                r.turboTimer = 2.0;
+                if (!r.isBot) {
+                  SoundFX.orbPickup();
+                  pushBattleToast(`🛡️ <strong>${r.name}</strong> mendapat Perisai Anti-Jebakan + Turbo!`, "bg-teal-900/95 border-teal-400 text-white");
+                }
+              }
+              deckNeedsRefresh = true;
+            } else if (ent.kind === 'TRAP') {
+              // Terkena Jebakan (kecuali punya Perisai atau Turbo)
+              if (r.shieldTimer > 0 || r.turboTimer > 0) {
+                if (!r.isBot) {
+                  pushBattleToast(`✨ Perisai/Turbo <strong>${r.name}</strong> menghancurkan jebakan ${ent.trapData.name}!`, "bg-sky-900/95 border-sky-400 text-white");
+                }
+                return;
+              }
+
+              r.trapsHit++;
+              if (!r.isBot) SoundFX.trapHit();
+
+              const tType = ent.trapData.type;
+              if (tType === 'SLOW_SLIME') {
+                r.slowTimer = 3.5;
+                if (!r.isBot) pushBattleToast(`🟣 <strong>${r.name}</strong> menginjak Lumpur Glitch! Kecepatan melambat!`, "bg-purple-950/95 border-purple-400 text-white");
+              } else if (tType === 'BUG_SPIKE') {
+                r.stunTimer = 2.0;
+                if (!r.isBot) pushBattleToast(`👾 <strong>${r.name}</strong> menabrak Ranjau Virus Bug!`, "bg-rose-950/95 border-rose-400 text-white");
+              } else if (tType === 'CONFUSION_PORTAL') {
+                r.confusionTimer = 5.0;
+                if (r.activeQuiz) r.activeQuiz.options.sort(() => Math.random() - 0.5);
+                if (!r.isBot) pushBattleToast(`🌀 <strong>${r.name}</strong> masuk Portal Acak! Tombol teracak!`, "bg-cyan-950/95 border-cyan-400 text-white");
+              } else if (tType === 'FIREWALL_LOCK') {
+                if (!r.activeQuiz) {
+                  r.activeQuiz = createChallengeQuestion();
+                  r.quizMode = 'FIREWALL_TRAP';
+                  r.botThinkTimer = 1.4;
+                } else {
+                  r.slowTimer = 2.5;
+                }
+                if (!r.isBot) pushBattleToast(`🧱 <strong>${r.name}</strong> terhadang Dinding Firewall! Jawab simbol untuk membukanya!`, "bg-rose-950/95 border-amber-400 text-white");
+              }
+              deckNeedsRefresh = true;
+            }
+          }
+        });
+
+        // Cek Garis Finish
+        if (r.distance >= finishDistance) {
+          r.distance = finishDistance;
+          r.finished = true;
+          finishedCount++;
+          r.finishRank = finishedCount;
+          r.finishTime = raceElapsedTime;
+          r.score += Math.max(50, (7 - finishedCount) * 150);
+          r.activeQuiz = null;
+
+          if (!r.isBot) SoundFX.finishFanfare();
+          spawnLaneConfetti(r.index, 40);
+          pushBattleToast(`🏆 <strong>${r.name}</strong> mencapai FINISH di Peringkat #${r.finishRank}!`, "bg-amber-500 border-white text-slate-950");
+          deckNeedsRefresh = true;
+
+          if (finishedCount >= racers.length) {
+            setTimeout(showPodiumResults, 1200);
+          }
+        }
+      });
+
+      updateMinimapPositions();
+      if (deckNeedsRefresh) renderPlayerDeck();
+      else updateQuizTimerBars();
+    }
+
+    function spawnLaneConfetti(laneIdx, count) {
+      const { trackTop, laneHeight } = getTrackGeometry();
+      const yCenter = trackTop + (laneIdx + 0.5) * laneHeight;
+      const colors = ['#FACC15', '#38BDF8', '#34D399', '#F472B6', '#A78BFA'];
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: canvas.width * 0.25 + (Math.random() - 0.5) * 80,
+          y: yCenter,
+          vx: (Math.random() - 0.3) * 260,
+          vy: (Math.random() - 0.5) * 220,
+          size: 5 + Math.random() * 5,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          life: 0.9 + Math.random() * 0.4
+        });
+      }
+    }
+
+    // =========================================================================
+    // 9. RENDER UI MINIMAP & KARTU KONTROL TIAP PEMAIN (P1 - P6)
+    // =========================================================================
+    function renderMinimap() {
+      const track = document.getElementById('minimap-track');
+      // Hapus marker lama
+      track.querySelectorAll('.mm-marker').forEach(el => el.remove());
+
+      racers.forEach(r => {
+        const marker = document.createElement('div');
+        marker.id = `mm-marker-${r.index}`;
+        marker.className = `mm-marker absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-6 rounded-full ${r.badge} text-white font-game text-[10px] flex items-center justify-center border-2 border-white shadow-md transition-all duration-100`;
+        marker.style.left = '0%';
+        marker.textContent = r.label;
+        track.appendChild(marker);
+      });
+    }
+
+    function updateMinimapPositions() {
+      let leader = racers[0];
+      racers.forEach(r => {
+        if (r.distance > leader.distance) leader = r;
+        const pct = Math.min(100, Math.max(0, (r.distance / finishDistance) * 100));
+        const marker = document.getElementById(`mm-marker-${r.index}`);
+        if (marker) marker.style.left = `${pct}%`;
+      });
+
+      const leaderEl = document.getElementById('hud-leader-text');
+      if (leaderEl && leader) {
+        leaderEl.textContent = `Memimpin: ${leader.name} (${Math.floor(leader.distance)}m)`;
+      }
+    }
+
+    function renderPlayerDeck() {
+      const grid = document.getElementById('player-cards-grid');
+      // Atur jumlah kolom grid agar pas untuk 1-6 pemain
+      const colClasses = {
+        1: "max-w-xl mx-auto grid grid-cols-1 gap-3 pointer-events-auto",
+        2: "max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3 pointer-events-auto",
+        3: "max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-2.5 pointer-events-auto",
+        4: "max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-2 pointer-events-auto",
+        5: "max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pointer-events-auto",
+        6: "max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pointer-events-auto"
+      };
+      grid.className = colClasses[racers.length] || colClasses[6];
+
+      grid.innerHTML = racers.map(r => {
+        // Status Badge Efek
+        let statusTag = `<span class="text-[10px] font-bold text-slate-400">Berlari...</span>`;
+        if (r.finished) statusTag = `<span class="px-2 py-0.5 rounded bg-amber-400 text-slate-900 font-extrabold text-[10px]">🏆 Juara #${r.finishRank}</span>`;
+        else if (r.stunTimer > 0) statusTag = `<span class="px-1.5 py-0.5 rounded bg-rose-500 text-white font-bold text-[10px]">💥 Stun!</span>`;
+        else if (r.slowTimer > 0) statusTag = `<span class="px-1.5 py-0.5 rounded bg-purple-600 text-white font-bold text-[10px]">🟣 Melambat</span>`;
+        else if (r.turboTimer > 0) statusTag = `<span class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold text-[10px]">🚀 Turbo!</span>`;
+
+        // Area Konten Tengah Kartu (Kuis Aktif vs Tombol Lempar Serangan)
+        let bodyHTML = '';
+        if (r.finished) {
+          bodyHTML = `
+            <div class="py-4 text-center">
+              <div class="font-game text-base text-amber-400">FINISH!</div>
+              <div class="text-[11px] text-slate-300">Waktu: ${r.finishTime.toFixed(1)}s</div>
+            </div>
+          `;
+        } else if (r.activeQuiz) {
+          const isAttack = r.quizMode === 'ATTACK_INCOMING';
+          const isFirewall = r.quizMode === 'FIREWALL_TRAP';
+          const bannerText = isAttack
+            ? `💣 SERANGAN DARI ${r.attackerName.toUpperCase()}!`
+            : isFirewall
+              ? `🧱 BUKA DINDING FIREWALL!`
+              : `⚡ GERBANG SIMBOL:`;
+
+          bodyHTML = `
+            <div class="mt-1">
+              <div class="flex items-center justify-between gap-1 mb-1">
+                <span class="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${isAttack ? 'bg-rose-600 text-white' : isFirewall ? 'bg-amber-500 text-slate-950' : 'bg-sky-500/30 text-sky-200'} truncate">
+                  ${bannerText}
+                </span>
+                <div class="w-12 h-1.5 bg-slate-700 rounded-full overflow-hidden shrink-0">
+                  <div id="qbar-${r.index}" class="h-full bg-amber-400 w-full"></div>
+                </div>
+              </div>
+              <p class="text-[10px] sm:text-[11px] text-slate-100 font-semibold leading-tight line-clamp-2 mb-1.5 min-h-[26px]">
+                ${r.activeQuiz.target.clue}
+              </p>
+              <div class="grid grid-cols-3 gap-1">
+                ${r.activeQuiz.options.map((opt, optIdx) => `
+                  <button type="button" onclick="handleRacerAnswer(${r.index}, ${optIdx})"
+                    class="btn-3d bg-white hover:bg-amber-50 text-slate-900 rounded-xl p-1 border-b-2 border-slate-300 flex flex-col items-center justify-center text-center">
+                    <span class="text-[9px] font-mono font-extrabold text-slate-500">[${r.keys[optIdx]}]</span>
+                    <div class="w-10 h-7 sm:w-12 sm:h-8">${opt.svg}</div>
+                    ${difficulty === 'pemula'
+                      ? `<span class="text-[8px] font-bold leading-none line-clamp-1 mt-0.5">${opt.shortName}</span>`
+                      : ''
+                    }
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        } else {
+          // Sedang berlari normal: tampilkan tombol Lempar Pertanyaan ke Lawan!
+          bodyHTML = `
+            <div class="mt-1.5 flex flex-col justify-between gap-1.5">
+              <div class="flex items-center justify-between text-[10px] text-slate-300 bg-slate-800/80 px-2 py-1 rounded-lg">
+                <span>Amunisi Kuis:</span>
+                <span class="font-bold text-amber-400">${'💣'.repeat(r.ammo) || 'Kosong'}</span>
+              </div>
+              <button type="button" onclick="openAttackModal(${r.index})" ${r.ammo <= 0 || r.isBot ? 'disabled' : ''}
+                class="btn-3d w-full py-2 px-2 rounded-xl font-game text-xs flex items-center justify-center gap-1.5 transition
+                ${r.ammo > 0 && !r.isBot
+                  ? 'bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 text-white border-b-3 border-rose-800 shadow-md'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">
+                <i class="fa-solid fa-bomb"></i>
+                <span>${r.isBot ? 'AI Bot Otomatis' : (r.ammo > 0 ? (racers.length > 1 ? 'Lempar ke Lawan!' : 'Aktifkan Nitro!') : 'Cari Gerbang/Orb')}</span>
+              </button>
+            </div>
+          `;
+        }
+
+        const isUnderAttack = r.activeQuiz && r.quizMode === 'ATTACK_INCOMING';
+
+        return `
+          <div class="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-2.5 border-2 ${isUnderAttack ? 'border-rose-500 attack-shake' : r.border} shadow-xl flex flex-col justify-between">
+            <!-- Header Kartu Pemain -->
+            <div class="flex items-center justify-between gap-1 border-b border-slate-800 pb-1">
+              <div class="flex items-center gap-1.5 truncate">
+                <span class="px-1.5 py-0.5 rounded ${r.badge} text-white font-game text-[10px] shrink-0">${r.label}</span>
+                <span class="font-bold text-xs truncate">${r.name}</span>
+              </div>
+              ${statusTag}
+            </div>
+            ${bodyHTML}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateQuizTimerBars() {
+      racers.forEach(r => {
+        if (r.activeQuiz) {
+          const bar = document.getElementById(`qbar-${r.index}`);
+          if (bar) {
+            const pct = Math.max(0, (r.activeQuiz.timeLeft / r.activeQuiz.maxTime) * 100);
+            bar.style.width = `${pct}%`;
+          }
+        }
+      });
+    }
+
+    // =========================================================================
+    // 10. RENDER KANVAS LINTASAN MULTI-LANE (1 - 6 JALUR PARALEL)
+    // =========================================================================
+    function getTrackGeometry() {
+      const topMargin = 72;
+      const bottomMargin = racers.length <= 3 ? 165 : 195;
+      const availableH = Math.max(220, canvas.height - topMargin - bottomMargin);
+      const count = Math.max(1, racers.length || selectedPlayerCount);
+      const laneHeight = availableH / count;
+      return { trackTop: topMargin, availableH, laneHeight };
+    }
+
+    function drawRaceCanvas() {
+      const w = canvas.width;
+      const h = canvas.height;
+
+      // Latar Langit Cyber-Arena
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+      bgGrad.addColorStop(0, '#0F172A');
+      bgGrad.addColorStop(0.5, '#1E1B4B');
+      bgGrad.addColorStop(1, '#0F172A');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      if (racers.length === 0) return;
+
+      const { trackTop, availableH, laneHeight } = getTrackGeometry();
+      const pxPerMeter = 18; // Skala tampilan objek lintasan relatif terhadap pembalap
+
+      racers.forEach((r, idx) => {
+        const yTop = trackTop + idx * laneHeight;
+        const yCenter = yTop + laneHeight * 0.55;
+
+        // Latar Jalur (Alternating gelap-terang)
+        ctx.fillStyle = idx % 2 === 0 ? '#1E293B' : '#263349';
+        ctx.fillRect(0, yTop, w, laneHeight);
+
+        // Garis Pembatas Antar Jalur
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, yTop);
+        ctx.lineTo(w, yTop);
+        ctx.stroke();
+
+        // Garis Grid Bergerak di Tiap Jalur (Efek Kecepatan)
+        const gridStep = 90;
+        const shift = (r.distance * pxPerMeter) % gridStep;
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+        ctx.lineWidth = 2;
+        for (let gx = -shift; gx < w; gx += gridStep) {
+          ctx.beginPath();
+          ctx.moveTo(gx, yTop + 4);
+          ctx.lineTo(gx - 18, yTop + laneHeight - 4);
+          ctx.stroke();
+        }
+
+        // Posisi X Karakter Pembalap di Layar (Berdasarkan progres relatif + kamera mengikuti)
+        const runnerScreenX = Math.min(w * 0.35, 110 + (r.distance / finishDistance) * (w * 0.22));
+
+        // Gambar Garis Finish jika sudah dekat!
+        const distToFinish = finishDistance - r.distance;
+        const finishScreenX = runnerScreenX + distToFinish * pxPerMeter;
+        if (finishScreenX < w + 80) {
+          ctx.fillStyle = '#FACC15';
+          ctx.fillRect(finishScreenX, yTop, 10, laneHeight);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 11px Fredoka, sans-serif';
+          ctx.fillText('FINISH', finishScreenX + 14, yCenter);
+        }
+
+        // Gambar Jebakan & Kotak Item di Jalur Ini
+        trackEntities.forEach(ent => {
+          if (ent.lane !== idx || ent.triggered) return;
+          const relDist = ent.dist - r.distance;
+          const screenX = runnerScreenX + relDist * pxPerMeter;
+
+          if (screenX > -40 && screenX < w + 40) {
+            ctx.save();
+            ctx.translate(screenX, yCenter);
+            if (ent.kind === 'ORB') {
+              // Kotak Amunisi / Energi
+              ctx.fillStyle = '#FACC15';
+              ctx.beginPath();
+              ctx.arc(0, 0, 14, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = '#FFFFFF';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+              ctx.fillStyle = '#0F172A';
+              ctx.font = 'bold 13px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText('⚡', 0, 1);
+            } else {
+              // Jebakan Lintasan
+              ctx.fillStyle = ent.trapData.color;
+              ctx.beginPath();
+              ctx.roundRect(-15, -15, 30, 30, 8);
+              ctx.fill();
+              ctx.strokeStyle = '#FFFFFF';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+              ctx.font = '15px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(ent.trapData.icon, 0, 1);
+            }
+            ctx.restore();
+          }
+        });
+
+        // Gambar Gerbang Tantangan Flowchart Berikutnya di Jalur Ini
+        const relGateDist = r.nextQuizDist - r.distance;
+        const gateX = runnerScreenX + relGateDist * pxPerMeter;
+        if (!r.activeQuiz && gateX > -40 && gateX < w + 60) {
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+          ctx.strokeStyle = '#38BDF8';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.roundRect(gateX - 12, yTop + 6, 24, laneHeight - 12, 8);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // Gambar Robot Explorer Pembalap
+        drawLaneRobot(r, runnerScreenX, yCenter, Math.min(1, laneHeight / 78));
+      });
+
+      // Gambar Proyektil Serangan Pertanyaan yang Terbang Antar Jalur!
+      projectiles.forEach(proj => {
+        const y1 = trackTop + (proj.fromLane + 0.5) * laneHeight;
+        const y2 = trackTop + (proj.toLane + 0.5) * laneHeight;
+        const curY = y1 + (y2 - y1) * proj.progress;
+        const curX = (w * 0.25) + Math.sin(proj.progress * Math.PI) * 140;
+
+        ctx.save();
+        ctx.translate(curX, curY);
+        ctx.fillStyle = '#F43F5E';
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FACC15';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 14px Fredoka, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', 0, 1);
+        ctx.restore();
+      });
+
+      // Gambar Partikel Konfeti / Percikan
+      particles.forEach(p => {
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    function drawLaneRobot(racer, x, y, scale) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+
+      // Aura Status (Turbo / Perisai / Lumpur Slow)
+      if (racer.turboTimer > 0) {
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.28)';
+        ctx.beginPath();
+        ctx.arc(0, 0, 34, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (racer.shieldTimer > 0) {
+        ctx.strokeStyle = '#2DD4BF';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, 34, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (racer.slowTimer > 0) {
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.35)';
+        ctx.beginPath();
+        ctx.arc(0, 8, 28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const swing = Math.sin(racer.runCycle) * 9;
+
+      // Kaki
+      ctx.strokeStyle = '#0F172A';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-4, 12);
+      ctx.lineTo(-4 - swing, 24);
+      ctx.moveTo(4, 12);
+      ctx.lineTo(4 + swing, 24);
+      ctx.stroke();
+
+      // Badan Robot (Sesuai Warna Pemain)
+      ctx.fillStyle = racer.color;
+      ctx.beginPath();
+      ctx.roundRect(-14, -8, 28, 22, 7);
+      ctx.fill();
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Helm Kepala
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.roundRect(-15, -26, 30, 20, 8);
+      ctx.fill();
+
+      // Visor Mata
+      ctx.fillStyle = '#0F172A';
+      ctx.beginPath();
+      ctx.roundRect(-10, -22, 22, 11, 4);
+      ctx.fill();
+
+      ctx.fillStyle = racer.stunTimer > 0 ? '#F43F5E' : '#38BDF8';
+      ctx.beginPath();
+      ctx.arc(-3, -16.5, 2.3, 0, Math.PI * 2);
+      ctx.arc(6, -16.5, 2.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label Nama & Jarak di Atas Robot
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.beginPath();
+      ctx.roundRect(-36, -46, 72, 16, 6);
+      ctx.fill();
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 10px Plus Jakarta Sans, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${racer.label}: ${Math.floor(racer.distance)}m`, 0, -38);
+
+      ctx.restore();
+    }
+
+    // =========================================================================
+    // 11. PODIUM JUARA & TABEL STATISTIK AKHIR
+    // =========================================================================
+    function showPodiumResults() {
+      gameState = 'FINISHED';
+      document.getElementById('hud-top').classList.add('hidden');
+      document.getElementById('multiplayer-deck').classList.add('hidden');
+      document.getElementById('attack-modal').classList.add('hidden');
+
+      // Urutkan berdasarkan Peringkat Finish
+      const sorted = [...racers].sort((a, b) => (a.finishRank || 99) - (b.finishRank || 99));
+
+      // Render Podium Visual Top 3
+      const podiumOrder = [sorted[1], sorted[0], sorted[2]].filter(Boolean);
+      const podiumHeights = { 1: 'h-32 bg-amber-400 text-slate-900', 2: 'h-24 bg-slate-300 text-slate-900', 3: 'h-20 bg-amber-700 text-white' };
+
+      const podiumEl = document.getElementById('podium-container');
+      podiumEl.innerHTML = podiumOrder.map(r => {
+        const rank = r.finishRank;
+        const heightCls = podiumHeights[rank] || 'h-16 bg-slate-200 text-slate-800';
+        return `
+          <div class="flex flex-col items-center w-28 sm:w-36">
+            <div class="w-12 h-12 rounded-2xl ${r.badge} text-white font-game text-lg flex items-center justify-center shadow-lg border-2 border-white mb-1.5">
+              ${r.label}
+            </div>
+            <div class="font-bold text-xs sm:text-sm text-slate-900 truncate max-w-full mb-1">${r.name}</div>
+            <div class="text-[10px] font-semibold text-slate-500 mb-1.5">${r.finishTime.toFixed(1)}s</div>
+            <div class="w-full ${heightCls} rounded-t-2xl flex flex-col items-center justify-center font-game text-2xl shadow-md border-t-4 border-white/60">
+              <span>#${rank}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Render Tabel Lengkap Semua Pembalap
+      const tbody = document.getElementById('leaderboard-table-body');
+      tbody.innerHTML = sorted.map(r => {
+        const acc = r.questionsAnswered > 0 ? Math.round((r.questionsCorrect / r.questionsAnswered) * 100) : 100;
+        return `
+          <tr class="${r.finishRank === 1 ? 'bg-amber-50/70 font-bold' : ''}">
+            <td class="py-2.5 px-3 font-game text-base">#${r.finishRank}</td>
+            <td class="py-2.5 px-3">
+              <span class="inline-block px-2 py-0.5 rounded ${r.badge} text-white font-game text-[10px] mr-1.5">${r.label}</span>
+              <span>${r.name}</span>
+            </td>
+            <td class="py-2.5 px-3 text-center">${Math.floor(r.distance)}m</td>
+            <td class="py-2.5 px-3 text-center text-teal-700 font-bold">${acc}%</td>
+            <td class="py-2.5 px-3 text-center">💣 ${r.attacksSent}x</td>
+            <td class="py-2.5 px-3 text-center">🕸️ ${r.trapsHit}x</td>
+            <td class="py-2.5 px-3 text-right font-game text-amber-600">${r.score}</td>
+          </tr>
+        `;
+      }).join('');
+
+      document.getElementById('gameover-screen').classList.remove('hidden');
+    }
+
+    // =========================================================================
+    // 12. KONTROL KEYBOARD MULTI-PEMAIN & MAIN LOOP
+    // =========================================================================
+    window.addEventListener('keydown', (e) => {
+      if (gameState !== 'RACING') return;
+      // Abaikan jika sedang mengetik di input
+      if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+
+      const keyUpper = e.key.toUpperCase();
+      racers.forEach(r => {
+        if (r.isBot || r.finished || !r.activeQuiz) return;
+        const optIdx = r.keys.indexOf(keyUpper);
+        if (optIdx !== -1) {
+          e.preventDefault();
+          handleRacerAnswer(r.index, optIdx);
+        }
+      });
+    });
+
+    let lastTimestamp = performance.now();
+    function mainLoop(timestamp) {
+      const dt = Math.min(0.05, (timestamp - lastTimestamp) / 1000);
+      lastTimestamp = timestamp;
+
+      updateRace(dt);
+      drawRaceCanvas();
+
+      requestAnimationFrame(mainLoop);
+    }
+
+    window.onload = function () {
+      setPlayerCount(3);
+      setFinishDistance(800);
+      lastTimestamp = performance.now();
+      requestAnimationFrame(mainLoop);
+    };
+  </script>
+</body>
+</html>
